@@ -1,1 +1,251 @@
+name: Android Release (AAB)
+
+on:
+  workflow_dispatch:
+    inputs:
+      packageId:
+        description: "Android package id (e.g., com.example.app)"
+        required: false
+        default: "app.lovable.d2a8b5ffc2b3491dbcada0570b04c8b5"
+      versionName:
+        description: "Version name (e.g., 1.0.0)"
+        required: false
+        default: "1.0.0"
+      versionCode:
+        description: "Version code (int, e.g., 1)"
+        required: false
+        default: "1"
+
+jobs:
+  build-aab:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: |
+          npm ci
+
+      - name: Build web app
+        run: |
+          npm run build
+
+      - name: Add Android platform (Capacitor)
+        run: |
+          npx cap sync android
+
+      - name: Set app version and package id
+        working-directory: android
+        run: |
+          # Update versionName/versionCode in app/build.gradle if present
+          sed -i.bak "s/versionName \"[^\"]*\"/versionName \"${{ github.event.inputs.versionName }}\"/" app/build.gradle || true
+          sed -i.bak "s/versionCode [0-9]\+/versionCode ${{ github.event.inputs.versionCode }}/" app/build.gradle || true
+          # Update applicationId if present
+          sed -i.bak "s/applicationId \"[^\"]*\"/applicationId \"${{ github.event.inputs.packageId }}\"/" app/build.gradle || true
+
+      - name: Prepare signing (optional)
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_ALIAS_PASSWORD: ${{ secrets.ANDROID_KEY_ALIAS_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "Decoding keystore"
+            mkdir -p android/app/keystore
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/keystore/upload.jks
+            echo "Applying signing.gradle"
+            cat > android/signing.gradle <<'GRADLE'
+            def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH") ?: "app/keystore/upload.jks"
+            def storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            def keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+            def keyPassword = System.getenv("ANDROID_KEY_ALIAS_PASSWORD")
+            if (storePassword && keyAlias && keyPassword) {
+              android {
+                signingConfigs {
+                  release {
+                    storeFile file(keystorePath)
+                    storePassword storePassword
+                    keyAlias keyAlias
+                    keyPassword keyPassword
+                  }
+                }
+                buildTypes {
+                  release {
+                    signingConfig signingConfigs.release
+                    minifyEnabled false
+                    shrinkResources false
+                  }
+                }
+              }
+            }
+GRADLE
+            # Inject apply from if missing
+            if ! grep -q 'apply from: "../signing.gradle"' android/app/build.gradle; then
+              sed -i '1i apply from: "../signing.gradle"' android/app/build.gradle
+            fi
+          fi
+
+      - name: Build AAB
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PATH: app/keystore/upload.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_ALIAS_PASSWORD: ${{ secrets.ANDROID_KEY_ALIAS_PASSWORD }}
+        run: |
+          ./gradlew wrapper
+          ./gradlew bundleRelease || ./gradlew bundleDebug
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-aab
+          path: |
+            android/app/build/outputs/bundle/release/app-release.aab
+            android/app/build/outputs/bundle/debug/app-debug.aab
+I’ll have you populate that empty file. Click the pencil to edit, paste this entire YAML, commit to main, then try “Build & Download AAB” again.
+
+
+name: Android Release (AAB)
+
+on:
+  workflow_dispatch:
+    inputs:
+      packageId:
+        description: "Android package id (e.g., com.example.app)"
+        required: false
+        default: "app.lovable.d2a8b5ffc2b3491dbcada0570b04c8b5"
+      versionName:
+        description: "Version name (e.g., 1.0.0)"
+        required: false
+        default: "1.0.0"
+      versionCode:
+        description: "Version code (int, e.g., 1)"
+        required: false
+        default: "1"
+
+jobs:
+  build-aab:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: |
+          npm ci
+
+      - name: Build web app
+        run: |
+          npm run build
+
+      - name: Add Android platform (Capacitor)
+        run: |
+          npx cap sync android
+
+      - name: Set app version and package id
+        working-directory: android
+        run: |
+          # Update versionName/versionCode in app/build.gradle if present
+          sed -i.bak "s/versionName \"[^\"]*\"/versionName \"${{ github.event.inputs.versionName }}\"/" app/build.gradle || true
+          sed -i.bak "s/versionCode [0-9]\+/versionCode ${{ github.event.inputs.versionCode }}/" app/build.gradle || true
+          # Update applicationId if present
+          sed -i.bak "s/applicationId \"[^\"]*\"/applicationId \"${{ github.event.inputs.packageId }}\"/" app/build.gradle || true
+
+      - name: Prepare signing (optional)
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_ALIAS_PASSWORD: ${{ secrets.ANDROID_KEY_ALIAS_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "Decoding keystore"
+            mkdir -p android/app/keystore
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/keystore/upload.jks
+            echo "Applying signing.gradle"
+            cat > android/signing.gradle <<'GRADLE'
+            def keystorePath = System.getenv("ANDROID_KEYSTORE_PATH") ?: "app/keystore/upload.jks"
+            def storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            def keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+            def keyPassword = System.getenv("ANDROID_KEY_ALIAS_PASSWORD")
+            if (storePassword && keyAlias && keyPassword) {
+              android {
+                signingConfigs {
+                  release {
+                    storeFile file(keystorePath)
+                    storePassword storePassword
+                    keyAlias keyAlias
+                    keyPassword keyPassword
+                  }
+                }
+                buildTypes {
+                  release {
+                    signingConfig signingConfigs.release
+                    minifyEnabled false
+                    shrinkResources false
+                  }
+                }
+              }
+            }
+GRADLE
+            # Inject apply from if missing
+            if ! grep -q 'apply from: "../signing.gradle"' android/app/build.gradle; then
+              sed -i '1i apply from: "../signing.gradle"' android/app/build.gradle
+            fi
+          fi
+
+      - name: Build AAB
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PATH: app/keystore/upload.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_ALIAS_PASSWORD: ${{ secrets.ANDROID_KEY_ALIAS_PASSWORD }}
+        run: |
+          ./gradlew wrapper
+          ./gradlew bundleRelease || ./gradlew bundleDebug
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-aab
+          path: |
+            android/app/build/outputs/bundle/release/app-release.aab
+            android/app/build/outputs/bundle/debug/app-debug.aab
+
+
+
 
